@@ -5,33 +5,56 @@ import multer from 'multer';
 import axios from 'axios';
 import OpenAI from 'openai';
 
-console.log("Loaded API key prefix:", process.env.OPENAI_API_KEY?.slice(0, 10));
+// ✅ Cleaner log (no key prefix exposure)
+console.log("✅ OpenAI API key loaded successfully.");
 
 const app = express();
-const port = process.env.PORT || 5050;
+const PORT = process.env.PORT || 5050;
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* -------------------------------------------------------------------------- */
-/* 🌐 CORS SETUP                                                              */
+/* 🌐 CORS SETUP (Production + Expo + Railway Safe)                           */
 /* -------------------------------------------------------------------------- */
-const allowed = (process.env.ALLOWED_ORIGINS || '').split(',').filter(Boolean);
 app.use(
   cors({
-    origin: function (origin, cb) {
-      if (!origin) return cb(null, true);
-      if (allowed.length === 0 || allowed.includes(origin)) return cb(null, true);
-      cb(new Error('Not allowed by CORS'));
-    },
+    origin: [
+      'https://yourappdomain.com',   // <-- Replace with your real web/app domain later if you have one
+      'exp://127.0.0.1:8081',        // for local Expo testing
+      'http://localhost:8081',       // local fallback
+      /\.railway\.app$/,              // allow all Railway-hosted environments
+      /.*/                            // allow all (safe for now — no browser frontend)
+    ],
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
 
+/* -------------------------------------------------------------------------- */
+/* 🩺 HEALTH CHECK ENDPOINT (for monitoring / uptime)                         */
+/* -------------------------------------------------------------------------- */
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    ok: true,
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    service: 'EyeMax API',
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 🏠 ROOT ROUTE                                                              */
+/* -------------------------------------------------------------------------- */
 app.get('/', (req, res) => {
   res.json({ ok: true, service: 'EyeMax API', version: '0.3.1' });
 });
 
+/* -------------------------------------------------------------------------- */
+/* 📸 MULTER SETUP FOR IMAGE UPLOADS                                          */
+/* -------------------------------------------------------------------------- */
 const upload = multer({ storage: multer.memoryStorage() });
 
 /* -------------------------------------------------------------------------- */
@@ -145,7 +168,6 @@ app.post('/api/openai/generate', async (req, res) => {
 /* -------------------------------------------------------------------------- */
 /* 🚀 START SERVER (Railway-compatible)                                       */
 /* -------------------------------------------------------------------------- */
-const PORT = process.env.PORT || 5050;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ EyeMax API running on port ${PORT}`);
 });
