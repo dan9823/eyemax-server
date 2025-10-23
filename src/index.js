@@ -4,8 +4,9 @@ import cors from 'cors';
 import multer from 'multer';
 import axios from 'axios';
 import OpenAI from 'openai';
+import pool from './db.js'; // ✅ PostgreSQL connection
 
-// ✅ Cleaner log (no key prefix exposure)
+// ✅ Log minimal info (no key exposure)
 console.log("✅ OpenAI API key loaded successfully.");
 
 const app = express();
@@ -21,11 +22,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use(
   cors({
     origin: [
-      'https://yourappdomain.com',   // <-- Replace with your real web/app domain later if you have one
-      'exp://127.0.0.1:8081',        // for local Expo testing
-      'http://localhost:8081',       // local fallback
-      /\.railway\.app$/,              // allow all Railway-hosted environments
-      /.*/                            // allow all (safe for now — no browser frontend)
+      'https://yourappdomain.com',
+      'exp://127.0.0.1:8081',
+      'http://localhost:8081',
+      /\.railway\.app$/,
+      /.*/,
     ],
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -46,11 +47,11 @@ app.get('/health', (req, res) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 🏠 ROOT ROUTE                                                              */
+/* 🧠 DATABASE TEST CONNECTION                                                */
 /* -------------------------------------------------------------------------- */
-app.get('/', (req, res) => {
-  res.json({ ok: true, service: 'EyeMax API', version: '0.3.1' });
-});
+pool.connect()
+  .then(() => console.log('✅ Connected to PostgreSQL database'))
+  .catch(err => console.error('❌ Database connection error:', err.message));
 
 /* -------------------------------------------------------------------------- */
 /* 📸 MULTER SETUP FOR IMAGE UPLOADS                                          */
@@ -66,16 +67,12 @@ app.post('/api/analyze', upload.single('image'), async (req, res) => {
       return res.status(400).json({ ok: false, error: 'No image uploaded.' });
     }
 
-    // Convert to base64 data URI
     const b64 = req.file.buffer.toString('base64');
     const imageData = `data:${req.file.mimetype};base64,${b64}`;
 
-    // 🧩 Vision prompt
     const prompt = `
 You are EyeMax, an AI trained to evaluate human eye-area aesthetics with precision and empathy.
-Your tone should be direct but motivating — no excessive kindness or flattery.
-
-You must return ONLY valid JSON in this format:
+Return ONLY JSON in this format:
 
 {
   "eyebrows": number,
@@ -88,15 +85,7 @@ You must return ONLY valid JSON in this format:
   "eye_color": string,
   "notes": string[],
   "improvements": string[]
-}
-
-Evaluation guidelines:
-- Score 100 = world-class, 80–90 = excellent, 70–79 = above average, 60–69 = below average, <60 = poor.
-- "Potential" should always exceed "overall".
-- If eyes aren’t visible, respond: {"error": "Eyes not clearly visible. Please retake photo."}
-- Keep “improvements” natural: sleep, hydration, cold compress, posture, massage, lighting, etc.
-- Focus on symmetry, brightness, and proportion — ignore filters or makeup.
-`;
+}`;
 
     const completion = await client.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -119,6 +108,26 @@ Evaluation guidelines:
 
     if (json.error) {
       return res.status(400).json({ ok: false, message: json.error });
+    }
+
+    // 🧠 Save to database
+    try {
+      await pool.query(
+        `INSERT INTO analyses (overall, eye_health, symmetry, eyebrows, eyelashes, potential, image_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          json.overall || null,
+          json.eye_healthiness || null,
+          json.symmetry || null,
+          json.eyebrows || null,
+          json.eyelashes || null,
+          json.potential || null,
+          null // placeholder for image URL
+        ]
+      );
+      console.log('✅ Analysis saved to database');
+    } catch (dbErr) {
+      console.error('❌ Failed to save analysis:', dbErr.message);
     }
 
     res.json({ ok: true, data: json });
@@ -165,6 +174,28 @@ app.post('/api/openai/generate', async (req, res) => {
   }
 });
 
+/* -------------------------------------------------------------------------- */
+/* 📊 GET /api/analyses/:userId - Fetch saved analyses for a specific user    */
+/* -------------------------------------------------------------------------- */
+app.get('/api/analyses/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId) {
+      return res.status(400).json({ ok: false, error: 'Missing user ID.' });
+    }
+
+    // Later, when we add auth, userId will come from a verified token instead
+    const result = await pool.query(
+      `SELECT * FROM analyses WHERE user_id = $1 ORDER BY created_at DESC`,
+      [userId]
+    );
+
+    res.json({ ok: true, data: result.rows });
+  } catch (err) {
+    console.error('❌ Error fetching analyses:', err.message);
+    res.status(500).json({ ok: false, error: 'Failed to fetch analyses' });
+  }
+});
 /* -------------------------------------------------------------------------- */
 /* 🚀 START SERVER (Railway-compatible)                                       */
 /* -------------------------------------------------------------------------- */

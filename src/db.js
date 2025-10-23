@@ -3,14 +3,7 @@ const { Pool } = pkg;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false, // required for Railway
-  },
+  ssl: { rejectUnauthorized: false }, // Needed for Railway PostgreSQL
 });
-
-// Test connection
-pool.connect()
-  .then(() => console.log('✅ Connected to PostgreSQL database'))
-  .catch((err) => console.error('❌ Database connection error:', err));
 
 export default pool;
