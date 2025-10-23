@@ -110,6 +110,23 @@ Return ONLY JSON in this format:
       return res.status(400).json({ ok: false, message: json.error });
     }
 
+    // 🗄️ Save analysis to database
+try {
+  const { overall, eye_healthiness, symmetry, eyebrows, eyelashes, potential } = json;
+  const imageUrl = req.file.originalname || 'uploaded_image';
+  const userId = req.body.user_id || 'guest'; // Later we’ll replace this with real auth ID
+
+  await pool.query(
+    `INSERT INTO analyses (overall, eye_health, symmetry, eyebrows, eyelashes, potential, image_url, user_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [overall, eye_healthiness, symmetry, eyebrows, eyelashes, potential, imageUrl, userId]
+  );
+
+  console.log(`✅ Saved analysis for user: ${userId}`);
+} catch (dbErr) {
+  console.error('⚠️ Failed to save analysis to DB:', dbErr.message);
+}
+    
     // 🧠 Save to database
     try {
       await pool.query(
