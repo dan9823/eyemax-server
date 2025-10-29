@@ -5,6 +5,7 @@ import multer from 'multer';
 import axios from 'axios';
 import OpenAI from 'openai';
 import pool from './db.js';
+import { randomUUID } from 'crypto'; // ✅ For fallback user IDs
 
 console.log("✅ OpenAI API key loaded successfully.");
 
@@ -18,7 +19,6 @@ app.use(express.urlencoded({ extended: true }));
 process.on('unhandledRejection', (err) => {
   console.error('💥 Unhandled rejection:', err);
 });
-
 process.on('uncaughtException', (err) => {
   console.error('💥 Uncaught exception:', err);
 });
@@ -65,7 +65,7 @@ app.post('/api/analyze', upload.single('image'), async (req, res) => {
     }
 
     const b64 = req.file.buffer.toString('base64');
-    console.log(`🧠 Sending image (${req.file.mimetype}, ${req.file.size} bytes) to OpenAI...`);
+    console.log(`🧠 Received image (${req.file.mimetype}, ${req.file.size} bytes)`);
 
     const prompt = `
 You are EyeMax, an AI trained to evaluate human eye-area aesthetics.
@@ -83,8 +83,7 @@ Return ONLY JSON in this format:
   "improvements": string[]
 }`;
 
-console.log("🧩 Image size:", req.file.size, "bytes");
-console.log("🧩 Sending to OpenAI:", `data:${req.file.mimetype};base64,${b64.slice(0, 50)}...`);
+    // ✅ Use new image type input so OpenAI actually analyzes the image
     const completion = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       response_format: { type: 'json_object' },
@@ -94,13 +93,7 @@ console.log("🧩 Sending to OpenAI:", `data:${req.file.mimetype};base64,${b64.s
           role: 'user',
           content: [
             { type: 'text', text: prompt },
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:${req.file.mimetype};base64,${b64}`,
-                detail: 'high',
-              },
-            },
+            { type: 'image', image: b64 },
           ],
         },
       ],
@@ -110,21 +103,31 @@ console.log("🧩 Sending to OpenAI:", `data:${req.file.mimetype};base64,${b64.s
     if (!result) throw new Error('Empty response from AI');
 
     const json = JSON.parse(result);
-    if (json.error) return res.status(400).json({ ok: false, message: json.error });
+    if (json.error) {
+      return res.status(400).json({ ok: false, message: json.error });
+    }
 
     // 🗄️ Save analysis to DB
     try {
-      const { overall, eye_healthiness, symmetry, eyebrows, eyelashes, potential } = json;
+      const {
+        overall,
+        eye_healthiness,
+        symmetry,
+        eyebrows,
+        eyelashes,
+        potential,
+      } = json;
+
       const imageUrl = req.file.originalname || 'uploaded_image';
-      const userId = req.body.user_id || 'guest';
+      const userId = req.body.user_id || null; // ✅ fixed (null not string)
 
       await pool.query(
         `INSERT INTO analyses (overall, eye_health, symmetry, eyebrows, eyelashes, potential, image_url, user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid)`,
         [overall, eye_healthiness, symmetry, eyebrows, eyelashes, potential, imageUrl, userId]
       );
 
-      console.log(`✅ Saved analysis for user: ${userId}`);
+      console.log(`✅ Saved analysis for user: ${userId || 'anonymous'}`);
     } catch (dbErr) {
       console.error('⚠️ Failed to save analysis to DB:', dbErr.message);
     }
@@ -145,14 +148,25 @@ app.post('/api/openai/generate', async (req, res) => {
 
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
-      { model: 'gpt-4o-mini', messages, temperature: 0.7 },
-      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
+      {
+        model: 'gpt-4o-mini',
+        messages,
+        temperature: 0.7,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+      }
     );
 
     res.json(response.data);
   } catch (error) {
     console.error('❌ Error generating AI response:', error.response?.data || error.message);
-    res.status(error.response?.status || 500).json({ error: 'Failed to generate response from AI' });
+    res
+      .status(error.response?.status || 500)
+      .json({ error: 'Failed to generate response from AI' });
   }
 });
 
@@ -160,7 +174,8 @@ app.post('/api/openai/generate', async (req, res) => {
 app.get('/api/analyses/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    if (!userId) return res.status(400).json({ ok: false, error: 'Missing user ID.' });
+    if (!userId)
+      return res.status(400).json({ ok: false, error: 'Missing user ID.' });
 
     const result = await pool.query(
       `SELECT * FROM analyses WHERE user_id = $1 ORDER BY created_at DESC`,
