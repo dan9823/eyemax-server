@@ -65,7 +65,7 @@ app.post('/api/analyze', upload.single('image'), async (req, res) => {
     }
 
     const b64 = req.file.buffer.toString('base64');
-    const imageData = `data:${req.file.mimetype};base64,${b64}`;
+    console.log(`🧠 Sending image (${req.file.mimetype}, ${req.file.size} bytes) to OpenAI...`);
 
     const prompt = `
 You are EyeMax, an AI trained to evaluate human eye-area aesthetics.
@@ -92,7 +92,13 @@ Return ONLY JSON in this format:
           role: 'user',
           content: [
             { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: imageData } },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${req.file.mimetype};base64,${b64}`,
+                detail: 'high',
+              },
+            },
           ],
         },
       ],
