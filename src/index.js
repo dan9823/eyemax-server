@@ -17,6 +17,14 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+process.on('unhandledRejection', (err) => {
+  console.error('💥 Unhandled rejection:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught exception:', err);
+});
+
 /* -------------------------------------------------------------------------- */
 /* 🌐 CORS SETUP (Production + Expo + Railway Safe)                           */
 /* -------------------------------------------------------------------------- */
