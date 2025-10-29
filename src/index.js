@@ -83,6 +83,8 @@ Return ONLY JSON in this format:
   "improvements": string[]
 }`;
 
+console.log("🧩 Image size:", req.file.size, "bytes");
+console.log("🧩 Sending to OpenAI:", `data:${req.file.mimetype};base64,${b64.slice(0, 50)}...`);
     const completion = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       response_format: { type: 'json_object' },
