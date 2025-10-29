@@ -5,7 +5,6 @@ import multer from 'multer';
 import axios from 'axios';
 import OpenAI from 'openai';
 import pool from './db.js';
-import authRoutes from './routes/auth.js'; // ✅ new import for OAuth routes
 
 // ✅ Minimal log (no key exposure)
 console.log("✅ OpenAI API key loaded successfully.");
