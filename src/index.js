@@ -6,7 +6,6 @@ import axios from 'axios';
 import OpenAI from 'openai';
 import pool from './db.js';
 
-// ✅ Minimal log (no key exposure)
 console.log("✅ OpenAI API key loaded successfully.");
 
 const app = express();
@@ -24,26 +23,22 @@ process.on('uncaughtException', (err) => {
   console.error('💥 Uncaught exception:', err);
 });
 
-/* -------------------------------------------------------------------------- */
-/* 🌐 CORS SETUP (Production + Expo + Railway Safe)                           */
-/* -------------------------------------------------------------------------- */
+/* 🌐 CORS SETUP ------------------------------------------------------------- */
 app.use(
   cors({
     origin: [
-      'https://yourappdomain.com', // replace later
+      'https://yourappdomain.com',
       'exp://127.0.0.1:8081',
       'http://localhost:8081',
       /\.railway\.app$/,
-      /.*/, // allow all (safe for now)
+      /.*/, // allow all for now
     ],
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
 
-/* -------------------------------------------------------------------------- */
-/* 🩺 HEALTH CHECK ENDPOINT                                                   */
-/* -------------------------------------------------------------------------- */
+/* 🩺 HEALTH CHECK ----------------------------------------------------------- */
 app.get('/health', (req, res) => {
   res.status(200).json({
     ok: true,
@@ -54,26 +49,15 @@ app.get('/health', (req, res) => {
   });
 });
 
-/* -------------------------------------------------------------------------- */
-/* 🧠 DATABASE CONNECTION TEST                                                */
-/* -------------------------------------------------------------------------- */
+/* 🧠 DATABASE CONNECTION ---------------------------------------------------- */
 pool.connect()
   .then(() => console.log('✅ Connected to PostgreSQL database'))
   .catch(err => console.error('❌ Database connection error:', err.message));
 
-/* -------------------------------------------------------------------------- */
-/* 🔐 AUTH ROUTES (Google + Apple)                                            */
-/* -------------------------------------------------------------------------- */
-app.use('/api/auth', authRoutes);
-
-/* -------------------------------------------------------------------------- */
-/* 📸 MULTER SETUP FOR IMAGE UPLOADS                                          */
-/* -------------------------------------------------------------------------- */
+/* 📸 MULTER SETUP ----------------------------------------------------------- */
 const upload = multer({ storage: multer.memoryStorage() });
 
-/* -------------------------------------------------------------------------- */
-/* 🧠 /api/analyze - Eye Analysis via GPT-4o-mini Vision                      */
-/* -------------------------------------------------------------------------- */
+/* 🧠 /api/analyze ----------------------------------------------------------- */
 app.post('/api/analyze', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
@@ -104,10 +88,13 @@ Return ONLY JSON in this format:
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: 'You analyze eye aesthetics and return valid JSON only.' },
-        { role: 'user', content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: imageData } },
-        ]},
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: imageData } },
+          ],
+        },
       ],
     });
 
@@ -117,7 +104,7 @@ Return ONLY JSON in this format:
     const json = JSON.parse(result);
     if (json.error) return res.status(400).json({ ok: false, message: json.error });
 
-    // 🗄️ Save analysis to database
+    // 🗄️ Save analysis to DB
     try {
       const { overall, eye_healthiness, symmetry, eyebrows, eyelashes, potential } = json;
       const imageUrl = req.file.originalname || 'uploaded_image';
@@ -141,9 +128,7 @@ Return ONLY JSON in this format:
   }
 });
 
-/* -------------------------------------------------------------------------- */
-/* 🤖 /api/openai/generate - Assistant chat & routine generator               */
-/* -------------------------------------------------------------------------- */
+/* 🤖 /api/openai/generate ---------------------------------------------------- */
 app.post('/api/openai/generate', async (req, res) => {
   try {
     const { messages } = req.body;
@@ -163,9 +148,7 @@ app.post('/api/openai/generate', async (req, res) => {
   }
 });
 
-/* -------------------------------------------------------------------------- */
-/* 📊 GET /api/analyses/:userId - Fetch saved analyses for a user             */
-/* -------------------------------------------------------------------------- */
+/* 📊 GET /api/analyses/:userId --------------------------------------------- */
 app.get('/api/analyses/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -183,9 +166,7 @@ app.get('/api/analyses/:userId', async (req, res) => {
   }
 });
 
-/* -------------------------------------------------------------------------- */
-/* 🚀 START SERVER (Railway-compatible)                                       */
-/* -------------------------------------------------------------------------- */
+/* 🚀 START SERVER ----------------------------------------------------------- */
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ EyeMax API running on port ${PORT}`);
 });
