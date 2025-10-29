@@ -65,6 +65,7 @@ app.post('/api/analyze', upload.single('image'), async (req, res) => {
     }
 
     const b64 = req.file.buffer.toString('base64');
+    const dataUrl = `data:${req.file.mimetype};base64,${b64}`;
     console.log(`🧠 Received image (${req.file.mimetype}, ${req.file.size} bytes)`);
 
     const prompt = `
@@ -83,7 +84,7 @@ Return ONLY JSON in this format:
   "improvements": string[]
 }`;
 
-    // ✅ Use new image type input so OpenAI actually analyzes the image
+    // ✅ Correct format: use "image_url" with base64 Data URI
     const completion = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       response_format: { type: 'json_object' },
@@ -93,7 +94,7 @@ Return ONLY JSON in this format:
           role: 'user',
           content: [
             { type: 'text', text: prompt },
-            { type: 'image', image: b64 },
+            { type: 'image_url', image_url: { url: dataUrl } },
           ],
         },
       ],
@@ -119,7 +120,7 @@ Return ONLY JSON in this format:
       } = json;
 
       const imageUrl = req.file.originalname || 'uploaded_image';
-      const userId = req.body.user_id || null; // ✅ fixed (null not string)
+      const userId = req.body.user_id || null; // ✅ fixed
 
       await pool.query(
         `INSERT INTO analyses (overall, eye_health, symmetry, eyebrows, eyelashes, potential, image_url, user_id)
